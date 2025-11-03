@@ -10,7 +10,7 @@ env:
   CLEAN_DATA: "true"
   MAX_URLS: "10" # limit
   CRAWL_DELAY: "0.8"
-  USER_AGENT: "Crawl4AI-GitHubAction/1.0)"
+  USER_AGENT: "Crawl4AI-GitHubAction/2.0)"
 
 on:
   push:
