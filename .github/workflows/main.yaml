@@ -101,5 +101,5 @@ jobs:
             COMMIT_MSG="crawl: sitemap content [$(date -Iseconds)]"
             git commit -m "$COMMIT_MSG"
             git push --force-with-lease origin $PRODUCTION_BRANCH
-            echo "✅ Successfully deployed crawled data to $PRODUCTION_BRANCH"
+            echo "✅ Successfully deployed crawled data to $PRODUCTION_BRANCH "
           fi
