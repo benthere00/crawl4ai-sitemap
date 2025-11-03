@@ -7,21 +7,26 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 import requests
 from crawl4ai import AsyncWebCrawler
+from bs4 import BeautifulSoup
+import shutil
 
-# === Configuration ===
-DATA_DIR = "data/v2"
+# === CONFIGURATION ===
+DATA_DIR = "data"
 SITEMAP_FILE = os.getenv("SITEMAP_FILE", "sitemaps.txt")
 CLEAN_DATA = os.getenv("CLEAN_DATA", "true").lower() == "true"
 MAX_URLS = int(os.getenv("MAX_URLS", "500"))
 CRAWL_DELAY = float(os.getenv("CRAWL_DELAY", "0.5"))
 USER_AGENT = os.getenv("USER_AGENT", "Crawl4AI-GitHubAction/1.0 (+https://github.com/)")
-CSS_SELECTORS = [
-    s.strip()
-    for s in os.getenv("CSS_SELECTOR", "").split(",")
-    if s.strip()
-]
+CSS_SELECTOR = os.getenv("CSS_SELECTOR", "#primary")  # e.g. "#primary,.entry-content,main"
 
-# === Helper Functions ===
+SKIP_EXTENSIONS = (
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+    ".ico", ".pdf", ".zip", ".rar", ".7z", ".mp3", ".mp4",
+    ".avi", ".mov", ".wmv", ".ogg", ".webm", ".json", ".xml",
+    ".txt", ".csv", ".js", ".css", ".woff", ".woff2", ".ttf"
+)
+
+# === HELPER FUNCTIONS ===
 def domain_from_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     return parsed.netloc.replace("www.", "")
@@ -57,41 +62,43 @@ def parse_sitemap(url: str) -> list:
         print(f"⚠️ Failed to parse sitemap {url}: {e}")
         return []
 
+def is_html_url(url: str) -> bool:
+    """Skip obvious non-HTML URLs."""
+    lower_path = urllib.parse.urlparse(url).path.lower()
+    return not lower_path.endswith(SKIP_EXTENSIONS)
+
+def extract_content(html: str) -> str:
+    """Extract content based on CSS selectors, fallback to full text."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    if CSS_SELECTOR:
+        selectors = [s.strip() for s in CSS_SELECTOR.split(",") if s.strip()]
+        for sel in selectors:
+            selected = soup.select(sel)
+            if selected:
+                return "\n\n".join([el.get_text(separator=" ", strip=True) for el in selected])
+
+    # fallback — grab everything
+    for tag in soup(["script", "style", "noscript"]):
+        tag.extract()
+    return soup.get_text(separator=" ", strip=True)
+
 async def crawl_url(crawler, url, save_dir):
     """Crawl a single URL and save its markdown output."""
     try:
-        md_content = None
-        last_error = None
-
-        # Try multiple CSS selectors until one yields usable markdown
-        selectors = CSS_SELECTORS or [None]
-        for sel in selectors:
-            try:
-                result = await crawler.arun(
-                    url=url,
-                    headers={"User-Agent": USER_AGENT},
-                    css_selector=sel,
-                )
-                if result and result.markdown:
-                    md_content = result.markdown
-                    if sel:
-                        print(f"   ✅ Extracted using selector: {sel}")
-                    break
-            except Exception as e:
-                last_error = e
-                continue
-
-        if not md_content:
-            print(f"⚠️ No content extracted for {url}. Last error: {last_error}")
-            return
-
+        result = await crawler.arun(
+            url=url,
+            headers={"User-Agent": USER_AGENT},
+        )
+        html_content = result.html or ""
+        text_content = extract_content(html_content)
         filename = safe_filename(url)
         filepath = os.path.join(save_dir, filename)
+
         async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
-            await f.write(md_content)
+            await f.write(f"# {url}\n\n{text_content}")
 
         print(f"✅ Saved {filepath}")
-
     except Exception as e:
         print(f"❌ Error crawling {url}: {e}")
 
@@ -115,32 +122,32 @@ async def main():
         print("⚠️ No URLs found to crawl.")
         return
 
-    # Trim to max allowed
-    urls_to_crawl = all_urls[:MAX_URLS]
-    first_domain = domain_from_url(urls_to_crawl[0])
-    domain_dir = os.path.join(DATA_DIR, first_domain)
+    # Remove duplicates and limit
+    all_urls = list(dict.fromkeys(all_urls))[:MAX_URLS]
 
-    # Ensure domain folder exists
+    first_domain = domain_from_url(all_urls[0])
+    domain_dir = os.path.join(DATA_DIR, "v2", first_domain)
+
+    # Clean only that domain folder
+    if CLEAN_DATA and os.path.exists(domain_dir):
+        print(f"🧹 Cleaning old data in {domain_dir} ...")
+        shutil.rmtree(domain_dir)
     os.makedirs(domain_dir, exist_ok=True)
 
-    # Clean only that domain folder if requested
-    if CLEAN_DATA:
-        import shutil
-        print(f"🧹 Cleaning old data in {domain_dir} ...")
-        shutil.rmtree(domain_dir, ignore_errors=True)
-        os.makedirs(domain_dir, exist_ok=True)
-
-    print(f"🚀 Starting crawl for {len(urls_to_crawl)} URLs under {first_domain} ...")
+    print(f"🚀 Starting crawl for {len(all_urls)} URLs under {first_domain} ...")
     print(f"   Using User-Agent: {USER_AGENT}")
-    print(f"   Crawl delay: {CRAWL_DELAY}s between requests")
-    if CSS_SELECTORS:
-        print(f"   CSS Selectors: {', '.join(CSS_SELECTORS)}")
+    print(f"   Crawl delay: {CRAWL_DELAY}s")
+    print(f"   CSS Selectors: {CSS_SELECTOR or '(none, full-page fallback)'}")
 
     async with AsyncWebCrawler() as crawler:
-        for i, url in enumerate(urls_to_crawl, start=1):
-            print(f"\n[{i}/{len(urls_to_crawl)}] Crawling: {url}")
+        for i, url in enumerate(all_urls, start=1):
+            if not is_html_url(url):
+                print(f"[{i}/{len(all_urls)}] Skipped non-HTML: {url}")
+                continue
+
+            print(f"\n[{i}/{len(all_urls)}] Crawling: {url}")
             await crawl_url(crawler, url, domain_dir)
-            if i < len(urls_to_crawl):
+            if i < len(all_urls):
                 await asyncio.sleep(CRAWL_DELAY)
 
     print(f"\n✅ Crawl completed. Saved files under {domain_dir}")
