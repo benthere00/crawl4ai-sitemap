@@ -8,6 +8,7 @@ env:
   USER: "github-actions[bot]"
   SITEMAP_FILE: "sitemaps.txt"
   CLEAN_DATA: "true"
+  MAX_URLS: "300" # limit
 
 on:
   push:
@@ -44,7 +45,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install crawl4ai python-dotenv
+          pip install "git+https://github.com/unclecode/crawl4ai.git"
+          pip install python-dotenv
       
       #Optionally, if Crawl4AI needs Playwright browsers, add:
       #- name: Install Playwright browsers
