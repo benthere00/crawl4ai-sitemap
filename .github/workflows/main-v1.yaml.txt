@@ -8,9 +8,10 @@ env:
   USER: "github-actions[bot]"
   SITEMAP_FILE: "sitemaps.txt"
   CLEAN_DATA: "true"
-  MAX_URLS: "300" # limit
+  MAX_URLS: "300" # limit per run
   CRAWL_DELAY: "0.8"
-  USER_AGENT: "Crawl4AI-GitHubAction/1.0)"
+  USER_AGENT: "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)"
+  CSS_SELECTOR: "#primary,.entry-content,main"
 
 on:
   push:
