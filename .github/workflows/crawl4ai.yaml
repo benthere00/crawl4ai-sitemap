@@ -49,7 +49,7 @@ jobs:
           pip install --pre crawl4ai python-dotenv requests
           crawl4ai-setup
           crawl4ai-doctor || true
-          python -m playwright install --with-deps chromium
+       # python -m playwright install --with-deps chromium
 
       # 5️⃣ Run the crawler
       - name: Run sitemap crawler
