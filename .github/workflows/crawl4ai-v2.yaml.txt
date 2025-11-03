@@ -1,4 +1,4 @@
-name: Crawl4AI - Sitemap Crawler
+name: Crawl4AI - Sitemap Crawler version 2.0.10
 
 env:
   TZ: Asia/Manila
@@ -8,9 +8,10 @@ env:
   USER: "github-actions[bot]"
   SITEMAP_FILE: "sitemaps.txt"
   CLEAN_DATA: "true"
-  MAX_URLS: "10" # limit
+  MAX_URLS: "20" # # Limit URLs per run
   CRAWL_DELAY: "0.8"
-  USER_AGENT: "Crawl4AI-GitHubAction/2.0)"
+  USER_AGENT: "Crawl4AI-GitHubAction/2.0 (+https://github.com/yourname/Crawl4AI)"
+  CSS_SELECTOR: "#primary,.entry-content,main"
 
 on:
   push:
