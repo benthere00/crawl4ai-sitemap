@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os
 import time
-import glob
 import shutil
 import requests
 from urllib.parse import urlparse
@@ -16,9 +15,17 @@ CLEAN_DATA = os.getenv("CLEAN_DATA", "true").lower() == "true"
 MAX_URLS = int(os.getenv("MAX_URLS", 500))
 CRAWL_DELAY = float(os.getenv("CRAWL_DELAY", 0.5))
 USER_AGENT = os.getenv("USER_AGENT", "Crawl4AI-GitHubAction/1.0")
-CSS_SELECTOR = os.getenv("CSS_SELECTOR", "#primary")  # e.g. "#primary,.entry-content,main"
+CSS_SELECTOR = os.getenv("CSS_SELECTOR", "")  # e.g. "#primary,.entry-content,main"
 
 HEADERS = {"User-Agent": USER_AGENT}
+
+# File types we don't crawl
+SKIP_EXTENSIONS = (
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+    ".ico", ".pdf", ".zip", ".rar", ".7z", ".mp3", ".mp4",
+    ".avi", ".mov", ".wmv", ".ogg", ".webm", ".json", ".xml",
+    ".txt", ".csv", ".js", ".css", ".woff", ".woff2", ".ttf"
+)
 
 # -----------------------------
 # UTILS
@@ -75,6 +82,11 @@ def get_urls_from_file():
                 urls.append(line)
     return urls
 
+def is_html_url(url):
+    """Skip obvious non-HTML file URLs"""
+    lower_path = urlparse(url).path.lower()
+    return not lower_path.endswith(SKIP_EXTENSIONS)
+
 def scrape_content(html):
     soup = BeautifulSoup(html, "html.parser")
 
@@ -115,9 +127,17 @@ def crawl():
 
     print(f"🌐 Starting crawl for {len(urls)} URLs (limit {MAX_URLS})")
     for i, url in enumerate(urls[:MAX_URLS], start=1):
+        if not is_html_url(url):
+            print(f"[{i}/{len(urls)}] Skipped non-HTML: {url}")
+            continue
+
         print(f"[{i}/{len(urls)}] Crawling: {url}")
         try:
             resp = requests.get(url, headers=HEADERS, timeout=20)
+            if "text/html" not in resp.headers.get("Content-Type", ""):
+                print(f"⚠️  Non-HTML content type skipped: {url}")
+                continue
+
             if resp.status_code != 200:
                 print(f"⚠️  Skipped ({resp.status_code}): {url}")
                 continue
