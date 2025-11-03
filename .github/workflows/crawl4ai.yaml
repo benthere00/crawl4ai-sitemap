@@ -42,10 +42,11 @@ jobs:
           python-version: '3.11'
 
       # 4️⃣ Install crawler dependencies
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "crawl4ai --pre" python-dotenv requests
+          pip install --pre crawl4ai python-dotenv requests
           crawl4ai-setup
           crawl4ai-doctor || true
           python -m playwright install --with-deps chromium
