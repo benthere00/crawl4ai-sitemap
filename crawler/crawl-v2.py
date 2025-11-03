@@ -6,40 +6,25 @@ import aiofiles
 import urllib.parse
 import xml.etree.ElementTree as ET
 import requests
-import shutil
 from crawl4ai import AsyncWebCrawler
 
 # === Configuration ===
-BASE_DATA_DIR = os.path.join("data", "v2")
+DATA_DIR = "data/v2"
 SITEMAP_FILE = os.getenv("SITEMAP_FILE", "sitemaps.txt")
 CLEAN_DATA = os.getenv("CLEAN_DATA", "true").lower() == "true"
 MAX_URLS = int(os.getenv("MAX_URLS", "500"))
 CRAWL_DELAY = float(os.getenv("CRAWL_DELAY", "0.5"))
-USER_AGENT = os.getenv("USER_AGENT", "Crawl4AI-GitHubAction/2.0 (+https://github.com/)")
+USER_AGENT = os.getenv("USER_AGENT", "Crawl4AI-GitHubAction/1.0 (+https://github.com/)")
+CSS_SELECTORS = [
+    s.strip()
+    for s in os.getenv("CSS_SELECTOR", "").split(",")
+    if s.strip()
+]
 
 # === Helper Functions ===
 def domain_from_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     return parsed.netloc.replace("www.", "")
-
-def get_domain_dir(domain: str) -> str:
-    """Ensure data/v2/<domain> exists; optionally clean."""
-    folder = os.path.join(BASE_DATA_DIR, domain)
-    os.makedirs(folder, exist_ok=True)
-    if CLEAN_DATA and os.path.exists(folder):
-        print(f"🧹 Cleaning data folder: {folder}")
-        for root, dirs, files in os.walk(folder):
-            for f in files:
-                try:
-                    os.remove(os.path.join(root, f))
-                except Exception:
-                    pass
-            for d in dirs:
-                try:
-                    shutil.rmtree(os.path.join(root, d))
-                except Exception:
-                    pass
-    return folder
 
 def safe_filename(url: str) -> str:
     path = urllib.parse.urlparse(url).path.strip("/")
@@ -55,11 +40,11 @@ def safe_filename(url: str) -> str:
     return filename + ".md"
 
 def parse_sitemap(url: str) -> list:
-    """Expand a sitemap XML and return all <loc> entries."""
+    """Parse a sitemap.xml and return a list of URLs."""
     print(f"🧭 Expanding sitemap: {url}")
     try:
         headers = {"User-Agent": USER_AGENT}
-        res = requests.get(url, headers=headers, timeout=20)
+        res = requests.get(url, headers=headers, timeout=15)
         res.raise_for_status()
         urls = []
         root = ET.fromstring(res.content)
@@ -73,20 +58,40 @@ def parse_sitemap(url: str) -> list:
         return []
 
 async def crawl_url(crawler, url, save_dir):
-    """Crawl a single URL and save its Markdown output."""
+    """Crawl a single URL and save its markdown output."""
     try:
-        result = await crawler.arun(
-            url=url,
-            headers={"User-Agent": USER_AGENT},
-        )
-        md_content = result.markdown or ""
+        md_content = None
+        last_error = None
+
+        # Try multiple CSS selectors until one yields usable markdown
+        selectors = CSS_SELECTORS or [None]
+        for sel in selectors:
+            try:
+                result = await crawler.arun(
+                    url=url,
+                    headers={"User-Agent": USER_AGENT},
+                    css_selector=sel,
+                )
+                if result and result.markdown:
+                    md_content = result.markdown
+                    if sel:
+                        print(f"   ✅ Extracted using selector: {sel}")
+                    break
+            except Exception as e:
+                last_error = e
+                continue
+
+        if not md_content:
+            print(f"⚠️ No content extracted for {url}. Last error: {last_error}")
+            return
+
         filename = safe_filename(url)
         filepath = os.path.join(save_dir, filename)
-
         async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(md_content)
 
         print(f"✅ Saved {filepath}")
+
     except Exception as e:
         print(f"❌ Error crawling {url}: {e}")
 
@@ -95,8 +100,9 @@ async def main():
         print(f"❌ Missing {SITEMAP_FILE}")
         return
 
+    # Collect all URLs from sitemaps.txt
     with open(SITEMAP_FILE, "r", encoding="utf-8") as f:
-        sitemap_urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        sitemap_urls = [line.strip() for line in f if line.strip()]
 
     all_urls = []
     for sitemap in sitemap_urls:
@@ -111,23 +117,33 @@ async def main():
 
     # Trim to max allowed
     urls_to_crawl = all_urls[:MAX_URLS]
-
-    # Prepare target folder
     first_domain = domain_from_url(urls_to_crawl[0])
-    domain_dir = get_domain_dir(first_domain)
+    domain_dir = os.path.join(DATA_DIR, first_domain)
 
-    print(f"\n🚀 Starting crawl for {len(urls_to_crawl)} URLs under {first_domain}")
-    print(f"   User-Agent: {USER_AGENT}")
-    print(f"   Crawl Delay: {CRAWL_DELAY}s\n")
+    # Ensure domain folder exists
+    os.makedirs(domain_dir, exist_ok=True)
+
+    # Clean only that domain folder if requested
+    if CLEAN_DATA:
+        import shutil
+        print(f"🧹 Cleaning old data in {domain_dir} ...")
+        shutil.rmtree(domain_dir, ignore_errors=True)
+        os.makedirs(domain_dir, exist_ok=True)
+
+    print(f"🚀 Starting crawl for {len(urls_to_crawl)} URLs under {first_domain} ...")
+    print(f"   Using User-Agent: {USER_AGENT}")
+    print(f"   Crawl delay: {CRAWL_DELAY}s between requests")
+    if CSS_SELECTORS:
+        print(f"   CSS Selectors: {', '.join(CSS_SELECTORS)}")
 
     async with AsyncWebCrawler() as crawler:
         for i, url in enumerate(urls_to_crawl, start=1):
-            print(f"[{i}/{len(urls_to_crawl)}] {url}")
+            print(f"\n[{i}/{len(urls_to_crawl)}] Crawling: {url}")
             await crawl_url(crawler, url, domain_dir)
             if i < len(urls_to_crawl):
                 await asyncio.sleep(CRAWL_DELAY)
 
-    print(f"\n✅ Crawl completed. Files saved under '{domain_dir}/'")
+    print(f"\n✅ Crawl completed. Saved files under {domain_dir}")
 
 if __name__ == "__main__":
     asyncio.run(main())
