@@ -1,12 +1,12 @@
-name: Crawl4AI - Sitemap Crawler
+name: Crawl4AI Sitemap Runner
 
 env:
   TZ: Asia/Manila
-  PRODUCTION_BRANCH: master
-  STAGING_BRANCH: staging
   EMAIL: "github-actions[bot]@users.noreply.github.com"
   USER: "github-actions[bot]"
-  SITEMAP_URL: "https://steam-n-dry.co.nz/page-sitemap.xml"
+  PRODUCTION_BRANCH: master
+  STAGING_BRANCH: staging
+  PYTHON_VERSION: "3.11"
 
 on:
   push:
@@ -15,91 +15,48 @@ on:
   workflow_dispatch:
 
 jobs:
-  crawl-and-deploy:
+  crawl:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout staging (trigger branch)
-      - name: Checkout repository
+      - name: Checkout staging branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
 
-      # 2️⃣ Confirm branch and timezone
-      - name: Time and branch check
-        run: |
-          echo "Current branch: $(git branch --show-current)"
-          echo "The time is: $(date)"
-          timedatectl
-
-      # 3️⃣ Set up Python (for crawler)
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      # 4️⃣ Install crawler dependencies
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 lxml markdownify
+          python -m pip install --upgrade pip
+          pip install beautifulsoup4 requests lxml
 
-      # 5️⃣ Run the crawler
-      - name: Run sitemap crawler
+      - name: Run Crawl4AI
         run: |
-          echo "Running Crawl4AI sitemap crawler..."
-          mkdir -p data
+          echo "🧭 Starting Crawl4AI..."
           python crawler/crawl.py
 
-      # 6️⃣ Diagnostics: show output
-      - name: Check output data
+      - name: Commit & push data to master
         run: |
-          echo "=== Generated Markdown files ==="
-          ls -lah data || true
-          echo "=== Sample preview ==="
-          head -n 15 data/*.md | cat
+          git config user.name "$USER"
+          git config user.email "$EMAIL"
 
-      # 7️⃣ Deploy to production branch
-      - name: Deploy generated content to production branch
-        run: |
-          git config --local user.email "$EMAIL"
-          git config --local user.name "$USER"
-
-          echo "Preparing production deployment..."
           git fetch origin
-
-          if git rev-parse --verify origin/$PRODUCTION_BRANCH >/dev/null 2>&1; then
-            echo "Remote production branch exists"
-            git branch -D $PRODUCTION_BRANCH 2>/dev/null || true
-            git checkout -b $PRODUCTION_BRANCH
-          else
-            echo "Remote production branch doesn't exist, creating new one..."
-            git checkout -b $PRODUCTION_BRANCH
+          if git rev-parse --verify origin/${{ env.PRODUCTION_BRANCH }} >/dev/null 2>&1; then
+            git branch -D ${{ env.PRODUCTION_BRANCH }} || true
           fi
+          git checkout -b ${{ env.PRODUCTION_BRANCH }}
 
-          # Clean up unnecessary files (optional)
-          if [ -d ".github" ]; then
-            rm -rf .github
-          fi
-
-          # Add readme with timestamp
-          cat > README.md << EOF
-          # Crawl4AI Data (Production)
-
-          This branch contains Markdown data crawled from:
-          - $SITEMAP_URL
-
-          **Last Crawl:** $(date -Iseconds)
-          EOF
-
-          git add -A data README.md
-          git status
-
+          echo "Syncing generated markdown files..."
+          git add data/
           if git diff --cached --quiet; then
-            echo "ℹ️ No changes to deploy"
+            echo "ℹ️ No new data changes."
           else
-            COMMIT_MSG="crawl: sitemap content [$(date -Iseconds)]"
-            git commit -m "$COMMIT_MSG"
-            git push --force-with-lease origin $PRODUCTION_BRANCH
-            echo "✅ Successfully deployed crawled data to $PRODUCTION_BRANCH "
+            git commit -m "crawl: update data [$(date -Iseconds)]"
+            git push --force origin ${{ env.PRODUCTION_BRANCH }}
+            echo "✅ Data updated and pushed to master."
           fi
