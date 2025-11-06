@@ -171,7 +171,7 @@ def crawl():
         clean_domain_folder(first_domain)
 
     # Always refresh links.txt
-    write_links_file(urls)
+    write_links_file(first_domain, urls)
 
     print(f"🌐 Starting crawl for {len(urls)} URLs (limit {MAX_URLS})")
     for i, url in enumerate(urls[:MAX_URLS], start=1):
