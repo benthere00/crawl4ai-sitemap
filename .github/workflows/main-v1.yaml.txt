@@ -95,8 +95,12 @@ jobs:
 
           **Last Crawl:** $(date -Iseconds)
           EOF
-
           git add -A data README.md
+
+          # Update trigger status
+          echo "false" > trigger.txt
+          git add -A trigger.txt
+
           git status
 
           if git diff --cached --quiet; then
