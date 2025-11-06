@@ -12,10 +12,10 @@ from bs4 import BeautifulSoup
 DATA_DIR = "data"
 SITEMAP_FILE = os.getenv("SITEMAP_FILE", "sitemaps.txt")
 CLEAN_DATA = os.getenv("CLEAN_DATA", "true").lower() == "true"
-MAX_URLS = int(os.getenv("MAX_URLS", 500))
+MAX_URLS = int(os.getenv("MAX_URLS", 20))
 CRAWL_DELAY = float(os.getenv("CRAWL_DELAY", 0.5))
 USER_AGENT = os.getenv("USER_AGENT", "Crawl4AI-GitHubAction/1.0")
-CSS_SELECTOR = os.getenv("CSS_SELECTOR", "")  # e.g. "#primary,.entry-content,main"
+CSS_SELECTOR = os.getenv("CSS_SELECTOR", "#primary,.entry-content,main")  # e.g. "#primary,.entry-content,main"
 
 HEADERS = {"User-Agent": USER_AGENT}
 
@@ -52,18 +52,40 @@ def clean_domain_folder(domain):
     os.makedirs(folder, exist_ok=True)
     return folder
 
-def expand_sitemap_url(sitemap_url):
-    """Return list of URLs found inside sitemap.xml"""
+def expand_sitemap_url(sitemap_url, depth=0, max_depth=3):
+    """Recursively expand sitemap indexes into URLs."""
+    urls = []
+    indent = "  " * depth
     try:
+        print(f"{indent}🔍 Fetching sitemap: {sitemap_url}")
         resp = requests.get(sitemap_url, headers=HEADERS, timeout=15)
         if resp.status_code != 200:
+            print(f"{indent}⚠️  Sitemap fetch failed ({resp.status_code})")
             return []
+
         soup = BeautifulSoup(resp.text, "xml")
-        locs = [loc.text.strip() for loc in soup.find_all("loc")]
-        return locs
+
+        if soup.find("sitemapindex"):
+            sitemap_locs = [loc.text.strip() for loc in soup.find_all("loc")]
+            print(f"{indent}🗂 Found {len(sitemap_locs)} nested sitemaps (depth={depth})")
+
+            if depth < max_depth:
+                for sm in sitemap_locs:
+                    urls.extend(expand_sitemap_url(sm, depth + 1, max_depth))
+            else:
+                print(f"{indent}⚠️  Max sitemap recursion depth reached at {sitemap_url}")
+
+        elif soup.find("urlset"):
+            url_locs = [loc.text.strip() for loc in soup.find_all("loc")]
+            print(f"{indent}🌐 Found {len(url_locs)} URLs in sitemap")
+            urls.extend(url_locs)
+        else:
+            print(f"{indent}⚠️  Unknown sitemap format: {sitemap_url}")
+
     except Exception as e:
-        print(f"⚠️  Failed to expand sitemap {sitemap_url}: {e}")
-        return []
+        print(f"{indent}⚠️  Failed to expand sitemap {sitemap_url}: {e}")
+
+    return urls
 
 def get_urls_from_file():
     urls = []
