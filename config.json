@@ -1,0 +1,12 @@
+{
+  "sitemap_urls": [
+    "https://example-1.com/sitemap_index.xml",
+    "https://example-2.com/sitemap.xml"
+  ],
+  "clean_data": true,
+  "max_urls": 20,
+  "crawl_delay": 0.8,
+  "css_selector": "#primary,.entry-content,main",
+  "date": "2025-11-07T00:00:00Z",
+  "trigger": true
+}
