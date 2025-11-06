@@ -144,15 +144,18 @@ def save_markdown(url, content):
         f.write(content)
     print(f"✅ Saved: {path}")
 
-def write_links_file(urls):
-    """Overwrite links.txt with all crawled URLs"""
+def write_links_file(domain, urls):
+    """Write links.txt inside the domain's folder"""
     if not SAVE_LINKS_FILE:
         return
-    if os.path.exists(LINKS_FILE):
-        os.remove(LINKS_FILE)
-    with open(LINKS_FILE, "w", encoding="utf-8") as f:
+    domain_dir = os.path.join(DATA_DIR, "v1", domain)
+    os.makedirs(domain_dir, exist_ok=True)
+    links_path = os.path.join(domain_dir, "links.txt")
+    if os.path.exists(links_path):
+        os.remove(links_path)
+    with open(links_path, "w", encoding="utf-8") as f:
         f.write("\n".join(urls))
-    print(f"📄 links.txt updated with {len(urls)} URLs")
+    print(f"📄 links.txt created for {domain} with {len(urls)} URLs → {links_path}")
 
 # -----------------------------
 # MAIN CRAWLER
