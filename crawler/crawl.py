@@ -12,32 +12,36 @@ from bs4 import BeautifulSoup
 # -----------------------------
 def load_config(path="config.json"):
     if not os.path.exists(path):
-        print("⚠️  config.json not found, using defaults")
+        print("⚠️ config.json not found — using default settings. Crawl limited to local defaults.")
         return {
             "sitemap_urls": [],
             "clean_data": True,
             "max_urls": 20,
             "crawl_delay": 0.8,
             "css_selector": "#primary,.entry-content,main",
-            "user_agent": "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)",
-            "trigger": True,
+            "trigger": False,
         }
+
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 config = load_config()
 
-# -----------------------------
-# CONFIG VARIABLES
-# -----------------------------
 DATA_DIR = "data"
-SITEMAP_URLS = config.get("sitemap_urls", [])
+SITEMAP_URLS = [
+    url.strip()
+    for url in config.get("sitemap_urls", [])
+    if url.strip()
+] if isinstance(config.get("sitemap_urls"), list) else [
+    u.strip() for u in config.get("sitemap_urls", "").split(",") if u.strip()
+]
 CLEAN_DATA = bool(config.get("clean_data", True))
 MAX_URLS = int(config.get("max_urls", 20))
-CRAWL_DELAY = float(config.get("crawl_delay", 0.5))
+CRAWL_DELAY = float(config.get("crawl_delay", 0.8))
 CSS_SELECTOR = config.get("css_selector", "#primary,.entry-content,main")
 USER_AGENT = config.get(
-    "user_agent", "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)"
+    "user_agent",
+    "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)"
 )
 
 HEADERS = {"User-Agent": USER_AGENT}
@@ -50,7 +54,7 @@ SKIP_EXTENSIONS = (
 )
 
 # -----------------------------
-# UTILITIES
+# UTILS
 # -----------------------------
 def url_to_filename(url):
     parsed = urlparse(url)
@@ -83,14 +87,20 @@ def expand_sitemap_url(sitemap_url, depth=0, max_depth=3):
 
         soup = BeautifulSoup(resp.text, "xml")
 
+        # Handle nested sitemap indexes
         if soup.find("sitemapindex"):
             sitemap_locs = [loc.text.strip() for loc in soup.find_all("loc")]
             print(f"{indent}🗂 Found {len(sitemap_locs)} nested sitemaps")
             for sm in sitemap_locs:
                 urls.extend(expand_sitemap_url(sm, depth + 1, max_depth))
 
+        # Handle standard sitemap URLs (ignore <image:image>)
         elif soup.find("urlset"):
-            url_locs = [loc.text.strip() for loc in soup.find_all("loc")]
+            url_locs = [
+                loc.text.strip()
+                for url_tag in soup.find_all("url")
+                for loc in url_tag.find_all("loc", recursive=False)
+            ]
             print(f"{indent}🌐 Found {len(url_locs)} URLs in sitemap")
             urls.extend(url_locs)
 
@@ -106,7 +116,8 @@ def get_urls_from_config():
     return urls
 
 def is_html_url(url):
-    return not urlparse(url).path.lower().endswith(SKIP_EXTENSIONS)
+    path = urlparse(url).path.lower()
+    return not path.endswith(SKIP_EXTENSIONS)
 
 def scrape_content(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -136,11 +147,9 @@ def crawl():
         print("⚠️  No URLs found to crawl.")
         return
 
-    # If multiple domains, clean all when CLEAN_DATA = True
+    first_domain = urlparse(urls[0]).netloc.replace("www.", "")
     if CLEAN_DATA:
-        for sitemap in SITEMAP_URLS:
-            domain = urlparse(sitemap).netloc.replace("www.", "")
-            clean_domain_folder(domain)
+        clean_domain_folder(first_domain)
 
     print(f"🌐 Starting crawl for {len(urls)} URLs (limit {MAX_URLS})")
     for i, url in enumerate(urls[:MAX_URLS], start=1):
