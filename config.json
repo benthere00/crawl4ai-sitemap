@@ -1,12 +1,11 @@
 {
   "sitemap_urls": [
-    "https://steam-n-dry.co.nz/page-sitemap.xml",
-    "https://steam-n-dry.co.nz/post-sitemap.xml"
+    "https://steam-n-dry.co.nz/page-sitemap.xml"
   ],
   "clean_data": true,
-  "max_urls": 30,
+  "max_urls": 300,
   "crawl_delay": 0.8,
   "css_selector": "#primary,.entry-content,main",
-  "date": "2025-11-06T19:47:19.009Z",
+  "date": "2025-11-06T20:47:23.558Z",
   "trigger": true
 }
