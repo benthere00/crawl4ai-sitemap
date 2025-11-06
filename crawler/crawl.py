@@ -12,37 +12,35 @@ from bs4 import BeautifulSoup
 # -----------------------------
 def load_config(path="config.json"):
     if not os.path.exists(path):
-        print("⚠️ config.json not found — using default settings. Crawl limited to local defaults.")
+        print("⚠️  config.json not found, using defaults")
         return {
             "sitemap_urls": [],
             "clean_data": True,
             "max_urls": 20,
             "crawl_delay": 0.8,
             "css_selector": "#primary,.entry-content,main",
-            "trigger": False,
+            "user_agent": "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)",
+            "trigger": True,
+            "include_links_header": False,
+            "save_links_file": True,
         }
-
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 config = load_config()
 
+# -----------------------------
+# CONFIG VARIABLES
+# -----------------------------
 DATA_DIR = "data"
-SITEMAP_URLS = [
-    url.strip()
-    for url in config.get("sitemap_urls", [])
-    if url.strip()
-] if isinstance(config.get("sitemap_urls"), list) else [
-    u.strip() for u in config.get("sitemap_urls", "").split(",") if u.strip()
-]
+SITEMAP_URLS = config.get("sitemap_urls", [])
 CLEAN_DATA = bool(config.get("clean_data", True))
 MAX_URLS = int(config.get("max_urls", 20))
-CRAWL_DELAY = float(config.get("crawl_delay", 0.8))
+CRAWL_DELAY = float(config.get("crawl_delay", 0.5))
 CSS_SELECTOR = config.get("css_selector", "#primary,.entry-content,main")
-USER_AGENT = config.get(
-    "user_agent",
-    "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)"
-)
+USER_AGENT = config.get("user_agent", "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)")
+INCLUDE_LINKS_HEADER = bool(config.get("include_links_header", False))
+SAVE_LINKS_FILE = bool(config.get("save_links_file", True))
 
 HEADERS = {"User-Agent": USER_AGENT}
 
@@ -53,8 +51,10 @@ SKIP_EXTENSIONS = (
     ".txt", ".csv", ".js", ".css", ".woff", ".woff2", ".ttf"
 )
 
+LINKS_FILE = "links.txt"
+
 # -----------------------------
-# UTILS
+# UTILITIES
 # -----------------------------
 def url_to_filename(url):
     parsed = urlparse(url)
@@ -87,20 +87,14 @@ def expand_sitemap_url(sitemap_url, depth=0, max_depth=3):
 
         soup = BeautifulSoup(resp.text, "xml")
 
-        # Handle nested sitemap indexes
         if soup.find("sitemapindex"):
             sitemap_locs = [loc.text.strip() for loc in soup.find_all("loc")]
             print(f"{indent}🗂 Found {len(sitemap_locs)} nested sitemaps")
             for sm in sitemap_locs:
                 urls.extend(expand_sitemap_url(sm, depth + 1, max_depth))
 
-        # Handle standard sitemap URLs (ignore <image:image>)
         elif soup.find("urlset"):
-            url_locs = [
-                loc.text.strip()
-                for url_tag in soup.find_all("url")
-                for loc in url_tag.find_all("loc", recursive=False)
-            ]
+            url_locs = [loc.text.strip() for loc in soup.find_all("loc")]
             print(f"{indent}🌐 Found {len(url_locs)} URLs in sitemap")
             urls.extend(url_locs)
 
@@ -116,8 +110,7 @@ def get_urls_from_config():
     return urls
 
 def is_html_url(url):
-    path = urlparse(url).path.lower()
-    return not path.endswith(SKIP_EXTENSIONS)
+    return not urlparse(url).path.lower().endswith(SKIP_EXTENSIONS)
 
 def scrape_content(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -135,8 +128,20 @@ def save_markdown(url, content):
     filename = url_to_filename(url)
     path = os.path.join(save_dir, filename)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(f"# {url}\n\n{content}")
+        if INCLUDE_LINKS_HEADER:
+            f.write(f"# {url}\n\n")
+        f.write(content)
     print(f"✅ Saved: {path}")
+
+def write_links_file(urls):
+    """Writes all crawled URLs to links.txt, overwriting each time"""
+    if not SAVE_LINKS_FILE:
+        return
+    if os.path.exists(LINKS_FILE):
+        os.remove(LINKS_FILE)
+    with open(LINKS_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(urls))
+    print(f"📄 links.txt updated with {len(urls)} URLs")
 
 # -----------------------------
 # MAIN CRAWLER
@@ -147,9 +152,13 @@ def crawl():
         print("⚠️  No URLs found to crawl.")
         return
 
-    first_domain = urlparse(urls[0]).netloc.replace("www.", "")
     if CLEAN_DATA:
-        clean_domain_folder(first_domain)
+        for sitemap in SITEMAP_URLS:
+            domain = urlparse(sitemap).netloc.replace("www.", "")
+            clean_domain_folder(domain)
+
+    # Always refresh links file
+    write_links_file(urls)
 
     print(f"🌐 Starting crawl for {len(urls)} URLs (limit {MAX_URLS})")
     for i, url in enumerate(urls[:MAX_URLS], start=1):
