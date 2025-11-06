@@ -12,20 +12,24 @@ from bs4 import BeautifulSoup
 # -----------------------------
 def load_config(path="config.json"):
     if not os.path.exists(path):
-        print(f"⚠️  config.json not found, using defaults")
+        print("⚠️  config.json not found, using defaults")
         return {
             "sitemap_urls": [],
             "clean_data": True,
             "max_urls": 20,
             "crawl_delay": 0.8,
             "css_selector": "#primary,.entry-content,main",
+            "user_agent": "Crawl4AI-GitHubAction/1.0 (+https://github.com/yourname/Crawl4AI)",
+            "trigger": True,
         }
-
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 config = load_config()
 
+# -----------------------------
+# CONFIG VARIABLES
+# -----------------------------
 DATA_DIR = "data"
 SITEMAP_URLS = config.get("sitemap_urls", [])
 CLEAN_DATA = bool(config.get("clean_data", True))
@@ -46,7 +50,7 @@ SKIP_EXTENSIONS = (
 )
 
 # -----------------------------
-# UTILS
+# UTILITIES
 # -----------------------------
 def url_to_filename(url):
     parsed = urlparse(url)
@@ -132,9 +136,11 @@ def crawl():
         print("⚠️  No URLs found to crawl.")
         return
 
-    first_domain = urlparse(urls[0]).netloc.replace("www.", "")
+    # If multiple domains, clean all when CLEAN_DATA = True
     if CLEAN_DATA:
-        clean_domain_folder(first_domain)
+        for sitemap in SITEMAP_URLS:
+            domain = urlparse(sitemap).netloc.replace("www.", "")
+            clean_domain_folder(domain)
 
     print(f"🌐 Starting crawl for {len(urls)} URLs (limit {MAX_URLS})")
     for i, url in enumerate(urls[:MAX_URLS], start=1):
