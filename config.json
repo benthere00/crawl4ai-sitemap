@@ -3,9 +3,9 @@
     "https://steam-n-dry.co.nz/page-sitemap.xml"
   ],
   "clean_data": true,
-  "max_urls": 30,
+  "max_urls": 300,
   "crawl_delay": 0.8,
   "css_selector": "#primary,.entry-content,main",
-  "date": "2025-11-07T07:45:50.560Z",
+  "date": "2025-11-12T21:36:37.337Z",
   "trigger": true
 }
