@@ -7,5 +7,5 @@
   "crawl_delay": 0.8,
   "css_selector": "#primary,.entry-content,main",
   "date": "2025-11-12T21:36:37.337Z",
-  "trigger": true
+  "trigger": false
 }
